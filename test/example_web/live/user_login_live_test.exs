@@ -6,18 +6,16 @@ defmodule ExampleWeb.UserLoginLiveTest do
 
   describe "Log in page" do
     test "renders log in page", %{conn: conn} do
-      {:ok, _lv, html} = live(conn, ~p"/users/log_in")
+      {:ok, _view, html} = live(conn, ~p"/login")
 
-      assert html =~ "Log in"
-      assert html =~ "Register"
-      assert html =~ "Forgot your password?"
+      assert html =~ "Sign In"
     end
 
     test "redirects if already logged in", %{conn: conn} do
       result =
         conn
-        |> log_in_user(user_fixture())
-        |> live(~p"/users/log_in")
+        |> login_user(user_fixture())
+        |> live(~p"/login")
         |> follow_redirect(conn, "/")
 
       assert {:ok, _conn} = result
@@ -25,63 +23,45 @@ defmodule ExampleWeb.UserLoginLiveTest do
   end
 
   describe "user login" do
-    test "redirects if user login with valid credentials", %{conn: conn} do
-      password = "123456789abcd"
-      user = user_fixture(%{password: password})
+    test "creates a user if one does not exist with that email, and send the link", %{conn: conn} do
+      email = "email@doesnotexist.com"
 
-      {:ok, lv, _html} = live(conn, ~p"/users/log_in")
+      assert is_nil(Example.Repo.get_by(Example.Users.User, email: email))
+      assert is_nil(find_token_for_email(email))
 
-      form =
-        form(lv, "#login_form", user: %{email: user.email, password: password, remember_me: true})
+      {:ok, view, _html} = live(conn, ~p"/login")
 
-      conn = submit_form(form, conn)
+      form = form(view, "#magic_link_form", user: %{email: email})
 
-      assert redirected_to(conn) == ~p"/"
+      _conn = submit_form(form, conn)
+
+      refute is_nil(Example.Repo.get_by(Example.Users.User, email: email))
+      refute is_nil(find_token_for_email(email))
     end
 
-    test "redirects to login page with a flash error if there are no valid credentials", %{
-      conn: conn
-    } do
-      {:ok, lv, _html} = live(conn, ~p"/users/log_in")
+    test "if user already exists, send the link but don't create a new one", %{conn: conn} do
+      email = "email@doesnotexist.com"
 
-      form =
-        form(lv, "#login_form",
-          user: %{email: "test@email.com", password: "123456", remember_me: true}
-        )
+      assert is_nil(Example.Repo.get_by(Example.Users.User, email: email))
+      assert is_nil(find_token_for_email(email))
 
-      conn = submit_form(form, conn)
+      {:ok, view, _html} = live(conn, ~p"/login")
 
-      assert Phoenix.Flash.get(conn.assigns.flash, :error) == "Invalid email or password"
+      form = form(view, "#magic_link_form", user: %{email: email})
 
-      assert redirected_to(conn) == "/users/log_in"
+      _conn = submit_form(form, conn)
+
+      refute is_nil(Example.Repo.get_by(Example.Users.User, email: email))
+      refute is_nil(find_token_for_email(email))
     end
   end
 
-  describe "login navigation" do
-    test "redirects to registration page when the Register button is clicked", %{conn: conn} do
-      {:ok, lv, _html} = live(conn, ~p"/users/log_in")
+  def find_token_for_email(email) do
+    import Ecto.Query
 
-      {:ok, _login_live, login_html} =
-        lv
-        |> element(~s|main a:fl-contains("Sign up")|)
-        |> render_click()
-        |> follow_redirect(conn, ~p"/users/register")
-
-      assert login_html =~ "Register"
-    end
-
-    test "redirects to forgot password page when the Forgot Password button is clicked", %{
-      conn: conn
-    } do
-      {:ok, lv, _html} = live(conn, ~p"/users/log_in")
-
-      {:ok, conn} =
-        lv
-        |> element(~s|main a:fl-contains("Forgot your password?")|)
-        |> render_click()
-        |> follow_redirect(conn, ~p"/users/reset_password")
-
-      assert conn.resp_body =~ "Forgot your password?"
-    end
+    Example.Users.UserToken
+    |> join(:inner, [ut], u in assoc(ut, :user))
+    |> where([ut, u], u.email == ^email)
+    |> Example.Repo.one()
   end
 end

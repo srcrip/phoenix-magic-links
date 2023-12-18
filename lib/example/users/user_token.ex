@@ -6,9 +6,9 @@ defmodule Example.Users.UserToken do
   @hash_algorithm :sha256
   @rand_size 32
 
-  # It is very important to keep the reset password token expiry short,
+  # It is very important to keep the email token expiry short,
   # since someone with access to the email may take over the account.
-  @reset_password_validity_in_days 1
+  @email_token_validity_in_days 1
   @confirm_validity_in_days 7
   @change_email_validity_in_days 7
   @session_validity_in_days 60
@@ -102,10 +102,7 @@ defmodule Example.Users.UserToken do
   The given token is valid if it matches its hashed counterpart in the
   database and the user email has not changed. This function also checks
   if the token is being used within a certain period, depending on the
-  context. The default contexts supported by this function are either
-  "confirm", for account confirmation emails, and "reset_password",
-  for resetting the password. For verifying requests to change the email,
-  see `verify_change_email_token_query/2`.
+  context.
   """
   def verify_email_token_query(token, context) do
     case Base.url_decode64(token, padding: false) do
@@ -126,8 +123,8 @@ defmodule Example.Users.UserToken do
     end
   end
 
+  defp days_for_context("magic_link"), do: @email_token_validity_in_days
   defp days_for_context("confirm"), do: @confirm_validity_in_days
-  defp days_for_context("reset_password"), do: @reset_password_validity_in_days
 
   @doc """
   Checks if the token is valid and returns its underlying lookup query.

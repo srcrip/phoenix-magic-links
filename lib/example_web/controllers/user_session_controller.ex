@@ -3,34 +3,31 @@ defmodule ExampleWeb.UserSessionController do
 
   alias Example.Users
   alias ExampleWeb.UserAuth
+  alias Example.Users.User
 
-  def create(conn, %{"_action" => "registered"} = params) do
-    create(conn, params, "Account created successfully!")
-  end
+  def send_magic_link(conn, params) do
+    %{"user" => %{"email" => email}} = params
 
-  def create(conn, %{"_action" => "password_updated"} = params) do
+    Users.login_or_register_user(email)
+
     conn
-    |> put_session(:user_return_to, ~p"/users/settings")
-    |> create(params, "Password updated successfully!")
+    |> put_flash(:info, "We've sent an email to #{email}, with a one-time sign-in link.")
+    |> redirect(to: ~p"/login")
   end
 
-  def create(conn, params) do
-    create(conn, params, "Welcome back!")
-  end
+  def login_with_token(conn, %{"token" => token} = _params) do
+    case Users.get_user_by_email_token(token, "magic_link") do
+      %User{} = user ->
+        {:ok, user} = Users.confirm_user(user)
 
-  defp create(conn, %{"user" => user_params}, info) do
-    %{"email" => email, "password" => password} = user_params
+        conn
+        |> put_flash(:info, "Logged in successfully.")
+        |> UserAuth.login_user(user)
 
-    if user = Users.get_user_by_email_and_password(email, password) do
-      conn
-      |> put_flash(:info, info)
-      |> UserAuth.log_in_user(user, user_params)
-    else
-      # In order to prevent user enumeration attacks, don't disclose whether the email is registered.
-      conn
-      |> put_flash(:error, "Invalid email or password")
-      |> put_flash(:email, String.slice(email, 0, 160))
-      |> redirect(to: ~p"/users/log_in")
+      _ ->
+        conn
+        |> put_flash(:error, "That link didn't seem to work. Please try again.")
+        |> redirect(to: ~p"/login")
     end
   end
 
